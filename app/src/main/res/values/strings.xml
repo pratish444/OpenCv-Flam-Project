@@ -1,3 +1,5 @@
 <resources>
-    <string name="app_name">Opencv Flam</string>
+    <string name="app_name">OpenCV Camera</string>
+    <string name="camera_permission_required">Camera permission is required to use this app</string>
+    <string name="camera_permission_denied">Camera permission denied. Please grant permission in Settings.</string>
 </resources>

@@ -12,16 +12,13 @@ extern std::unique_ptr<Renderer> createRenderer(int previewWidth, int previewHei
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-// ------------------------------------------------------------
-// All JNI functions must be inside extern "C"
-// ------------------------------------------------------------
 extern "C" {
 
 /**
  * Initialize native renderer.
  */
 JNIEXPORT jlong JNICALL
-Java_com_example_opencvcamera_GLSurfaceNativeView_nativeInit(
+Java_com_example_opencvflam_GLSurfaceNativeView_nativeInit(
         JNIEnv* env,
         jobject /* this */,
         jint previewWidth,
@@ -42,7 +39,7 @@ Java_com_example_opencvcamera_GLSurfaceNativeView_nativeInit(
  * Release renderer.
  */
 JNIEXPORT void JNICALL
-Java_com_example_opencvcamera_GLSurfaceNativeView_nativeRelease(
+Java_com_example_opencvflam_GLSurfaceNativeView_nativeRelease(
         JNIEnv* env,
         jobject /* this */,
         jlong handle) {
@@ -59,7 +56,7 @@ Java_com_example_opencvcamera_GLSurfaceNativeView_nativeRelease(
  * Surface created.
  */
 JNIEXPORT void JNICALL
-Java_com_example_opencvcamera_GLSurfaceNativeView_nativeOnSurfaceCreated(
+Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnSurfaceCreated(
         JNIEnv* env,
         jobject /* this */,
         jlong handle) {
@@ -81,7 +78,7 @@ Java_com_example_opencvcamera_GLSurfaceNativeView_nativeOnSurfaceCreated(
  * Surface changed.
  */
 JNIEXPORT void JNICALL
-Java_com_example_opencvcamera_GLSurfaceNativeView_nativeOnSurfaceChanged(
+Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnSurfaceChanged(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
@@ -105,7 +102,7 @@ Java_com_example_opencvcamera_GLSurfaceNativeView_nativeOnSurfaceChanged(
  * Pass camera frame.
  */
 JNIEXPORT void JNICALL
-Java_com_example_opencvcamera_GLSurfaceNativeView_nativeOnCameraFrame(
+Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnCameraFrame(
         JNIEnv* env,
         jobject /* this */,
         jlong handle,
@@ -140,7 +137,7 @@ Java_com_example_opencvcamera_GLSurfaceNativeView_nativeOnCameraFrame(
  * Draw frame.
  */
 JNIEXPORT void JNICALL
-Java_com_example_opencvcamera_GLSurfaceNativeView_nativeOnDrawFrame(
+Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnDrawFrame(
         JNIEnv* env,
         jobject /* this */,
         jlong handle) {

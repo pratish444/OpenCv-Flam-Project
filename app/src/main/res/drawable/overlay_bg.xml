@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Semi-transparent rounded background for overlay text -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <!-- Semi-transparent black background -->
+    <solid android:color="#80000000" />
+
+    <!-- Rounded corners -->
+    <corners android:radius="4dp" />
+
+    <!-- Optional: add padding/stroke if needed -->
+    <!-- <stroke android:width="1dp" android:color="#40FFFFFF" /> -->
+
+</shape>

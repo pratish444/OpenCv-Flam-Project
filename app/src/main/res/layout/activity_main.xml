@@ -1,19 +1,73 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <TextView
-        android:id="@+id/sample_text"
+    <!-- GLSurfaceView for native OpenGL rendering -->
+    <!-- We use fillParent so the camera preview/GL surface is fullscreen -->
+    <com.example.opencvflam.GLSurfaceNativeView
+        android:id="@+id/gl_surface_view"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_margin="0dp"
+        android:background="#000000"
+        android:keepScreenOn="true"
+        android:visibility="visible"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Small top-left overlay showing FPS & resolution -->
+    <LinearLayout
+        android:id="@+id/overlay_container"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Hello World!"
+        android:orientation="vertical"
+        android:padding="6dp"
+        android:layout_margin="8dp"
+        android:background="@drawable/overlay_bg"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <!-- FPS -->
+        <TextView
+            android:id="@+id/tv_fps"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="FPS: --"
+            android:textSize="12sp"
+            android:textColor="#FFFFFFFF"
+            android:fontFamily="sans-serif-medium" />
+
+        <!-- Resolution -->
+        <TextView
+            android:id="@+id/tv_resolution"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Res: -- x --"
+            android:textSize="12sp"
+            android:textColor="#FFFFFFFF"
+            android:fontFamily="sans-serif" />
+
+    </LinearLayout>
+
+    <!-- Permission hint (only visible when needed) -->
+    <TextView
+        android:id="@+id/tv_permissions_hint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Camera permission required"
+        android:textColor="#FFFFFFFF"
+        android:textSize="13sp"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        android:layout_margin="12dp" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
