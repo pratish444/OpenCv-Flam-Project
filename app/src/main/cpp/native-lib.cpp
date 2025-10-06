@@ -3,10 +3,7 @@
 #include <memory>
 #include <cstring>
 #include <exception>
-
-// Forward declare Renderer and factory
-class Renderer;
-extern std::unique_ptr<Renderer> createRenderer(int previewWidth, int previewHeight);
+#include "renderer.h"
 
 #define LOG_TAG "NativeLib"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -14,9 +11,6 @@ extern std::unique_ptr<Renderer> createRenderer(int previewWidth, int previewHei
 
 extern "C" {
 
-/**
- * Initialize native renderer.
- */
 JNIEXPORT jlong JNICALL
 Java_com_example_opencvflam_GLSurfaceNativeView_nativeInit(
         JNIEnv* env,
@@ -24,20 +18,22 @@ Java_com_example_opencvflam_GLSurfaceNativeView_nativeInit(
         jint previewWidth,
         jint previewHeight) {
 
-    LOGI("nativeInit: %dx%d", previewWidth, previewHeight);
+    LOGI("=== nativeInit START: %dx%d ===", previewWidth, previewHeight);
 
     try {
-        auto renderer = createRenderer(previewWidth, previewHeight);
-        return reinterpret_cast<jlong>(renderer.release());
+        LOGI("Creating Renderer...");
+        Renderer* renderer = new Renderer(previewWidth, previewHeight);
+        LOGI("Renderer created successfully, handle: %p", renderer);
+        return reinterpret_cast<jlong>(renderer);
     } catch (const std::exception& e) {
-        LOGE("nativeInit failed: %s", e.what());
+        LOGE("nativeInit failed with exception: %s", e.what());
+        return 0;
+    } catch (...) {
+        LOGE("nativeInit failed with unknown exception");
         return 0;
     }
 }
 
-/**
- * Release renderer.
- */
 JNIEXPORT void JNICALL
 Java_com_example_opencvflam_GLSurfaceNativeView_nativeRelease(
         JNIEnv* env,
@@ -52,14 +48,13 @@ Java_com_example_opencvflam_GLSurfaceNativeView_nativeRelease(
     }
 }
 
-/**
- * Surface created.
- */
 JNIEXPORT void JNICALL
 Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnSurfaceCreated(
         JNIEnv* env,
         jobject /* this */,
         jlong handle) {
+
+    LOGI("=== nativeOnSurfaceCreated called ===");
 
     if (handle == 0) {
         LOGE("nativeOnSurfaceCreated: invalid handle");
@@ -69,14 +64,12 @@ Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnSurfaceCreated(
 
     try {
         renderer->onSurfaceCreated();
+        LOGI("=== nativeOnSurfaceCreated complete ===");
     } catch (const std::exception& e) {
         LOGE("onSurfaceCreated failed: %s", e.what());
     }
 }
 
-/**
- * Surface changed.
- */
 JNIEXPORT void JNICALL
 Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnSurfaceChanged(
         JNIEnv* env,
@@ -84,6 +77,8 @@ Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnSurfaceChanged(
         jlong handle,
         jint width,
         jint height) {
+
+    LOGI("=== nativeOnSurfaceChanged: %dx%d ===", width, height);
 
     if (handle == 0) {
         LOGE("nativeOnSurfaceChanged: invalid handle");
@@ -93,14 +88,12 @@ Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnSurfaceChanged(
 
     try {
         renderer->onSurfaceChanged(width, height);
+        LOGI("=== nativeOnSurfaceChanged complete ===");
     } catch (const std::exception& e) {
         LOGE("onSurfaceChanged failed: %s", e.what());
     }
 }
 
-/**
- * Pass camera frame.
- */
 JNIEXPORT void JNICALL
 Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnCameraFrame(
         JNIEnv* env,
@@ -109,6 +102,13 @@ Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnCameraFrame(
         jbyteArray data,
         jint width,
         jint height) {
+
+    // Log EVERY frame to see if we're getting them
+    static int frameCount = 0;
+    frameCount++;
+
+    // Log every single frame for debugging
+    LOGI(">>> Camera frame %d: %dx%d <<<", frameCount, width, height);
 
     if (handle == 0) {
         LOGE("nativeOnCameraFrame: invalid handle");
@@ -124,8 +124,12 @@ Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnCameraFrame(
         return;
     }
 
+    jsize arrayLength = env->GetArrayLength(data);
+    LOGI("Frame data size: %d bytes (expected: %d)", arrayLength, width * height * 3 / 2);
+
     try {
         renderer->onCameraFrame(reinterpret_cast<uint8_t*>(dataPtr), width, height);
+        LOGI("Frame %d processed successfully", frameCount);
     } catch (const std::exception& e) {
         LOGE("onCameraFrame failed: %s", e.what());
     }
@@ -133,14 +137,16 @@ Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnCameraFrame(
     env->ReleaseByteArrayElements(data, dataPtr, JNI_ABORT);
 }
 
-/**
- * Draw frame.
- */
 JNIEXPORT void JNICALL
 Java_com_example_opencvflam_GLSurfaceNativeView_nativeOnDrawFrame(
         JNIEnv* env,
         jobject /* this */,
         jlong handle) {
+
+    static int drawCount = 0;
+    if (++drawCount % 30 == 0) {
+        LOGI("=== onDrawFrame %d ===", drawCount);
+    }
 
     if (handle == 0) {
         return;

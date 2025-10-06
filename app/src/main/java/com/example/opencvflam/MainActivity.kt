@@ -3,6 +3,7 @@ package com.example.opencvflam
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -32,11 +33,11 @@ class MainActivity : AppCompatActivity() {
 
     private var frameCount = 0
     private var lastFpsUpdateTime = 0L
+    private var isInitialized = false  // ADD THIS FLAG
 
     companion object {
         private const val CAMERA_PERMISSION_REQUEST = 100
 
-        // Load native library
         init {
             System.loadLibrary("native-lib")
         }
@@ -46,13 +47,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Initialize UI components
         glSurfaceView = findViewById(R.id.gl_surface_view)
         tvFps = findViewById(R.id.tv_fps)
         tvResolution = findViewById(R.id.tv_resolution)
         tvPermissionHint = findViewById(R.id.tv_permissions_hint)
 
-        // Check camera permission
         if (hasCameraPermission()) {
             initializeCamera()
         } else {
@@ -86,58 +85,52 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == CAMERA_PERMISSION_REQUEST) {
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 tvPermissionHint.visibility = TextView.GONE
-                initializeCamera()
+                // ONLY initialize if not already done
+                if (!isInitialized) {
+                    initializeCamera()
+                }
             } else {
                 tvPermissionHint.text = "Camera permission denied. Cannot start camera."
             }
         }
     }
 
-    /**
-     * Initialize camera and connect it to the native renderer.
-     *
-     * Flow:
-     * 1. GLSurfaceNativeView sets up OpenGL context and creates native renderer
-     * 2. CameraController opens camera and starts streaming YUV frames
-     * 3. Each camera frame is passed to native code via JNI
-     * 4. Native code processes with OpenCV and renders with OpenGL
-     */
     private fun initializeCamera() {
-        // Initialize GL surface first (creates native renderer)
+        if (isInitialized) {
+            Log.d("MainActivity", "Already initialized, skipping")
+            return
+        }
+
+        isInitialized = true
+        Log.d("MainActivity", "Initializing camera...")
+
         glSurfaceView.initialize(
-            previewWidth = 1280,  // Can adjust: 640x480 for better performance
-            previewHeight = 720,
+            previewWidth = 640,
+            previewHeight = 480,
             onFrameRendered = { onFrameRendered() }
         )
 
-        // Initialize camera controller
         cameraController = CameraController(
             context = this,
-            previewWidth = 1280,
-            previewHeight = 720,
+            previewWidth = 640,
+            previewHeight = 480,
             onFrameAvailable = { data, width, height ->
-                // Pass camera frame to native code (called on camera thread)
+                Log.d("MainActivity", "!!! FRAME RECEIVED: ${width}x${height} !!!")
                 glSurfaceView.onCameraFrame(data, width, height)
             }
         )
 
-        // Update resolution display
+        // DON'T start camera here - wait for onResume
         runOnUiThread {
-            tvResolution.text = "Res: 1280 x 720"
+            tvResolution.text = "Res: 640x480"
         }
     }
 
-    /**
-     * Called after each frame is rendered (from GL thread via callback).
-     * Updates FPS counter every ~1 second.
-     */
     private fun onFrameRendered() {
         frameCount++
-
         val currentTime = System.currentTimeMillis()
         val elapsed = currentTime - lastFpsUpdateTime
 
-        // Update FPS every second
         if (elapsed >= 1000) {
             val fps = (frameCount * 1000.0 / elapsed).toInt()
             runOnUiThread {
@@ -151,8 +144,15 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         glSurfaceView.onResume()
-        if (hasCameraPermission() && ::cameraController.isInitialized) {
-            cameraController.startCamera()
+
+        // Start camera with delay if already initialized
+        if (isInitialized) {
+            glSurfaceView.postDelayed({
+                if (hasCameraPermission() && ::cameraController.isInitialized) {
+                    Log.d("MainActivity", "Starting camera...")
+                    cameraController.startCamera()
+                }
+            }, 500)
         }
     }
 

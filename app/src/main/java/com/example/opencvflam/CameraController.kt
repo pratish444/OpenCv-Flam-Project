@@ -10,20 +10,6 @@ import android.util.Log
 import android.view.Surface
 import java.nio.ByteBuffer
 
-/**
- * CameraController - Manages Camera2 API for capturing YUV frames.
- *
- * Key design decisions:
- * - Uses Camera2 API (not deprecated Camera1)
- * - ImageReader with YUV_420_888 format for efficient processing
- * - Dedicated background thread for camera operations
- * - Converts YUV planes to NV21 format (Y plane + interleaved VU)
- * - Reuses byte array to minimize GC pressure
- *
- * Threading:
- * - All camera operations run on background "CameraThread"
- * - Frame callback delivers data on camera thread (caller must handle threading)
- */
 class CameraController(
     private val context: Context,
     private val previewWidth: Int,
@@ -37,29 +23,23 @@ class CameraController(
     private var captureSession: CameraCaptureSession? = null
     private var imageReader: ImageReader? = null
 
-    // Background thread for camera operations
     private var cameraThread: HandlerThread? = null
     private var cameraHandler: Handler? = null
 
-    // Reusable buffer for YUV data (avoid allocations each frame)
-    // NV21 format: Y plane (width*height) + VU plane (width*height/2)
-    private val nv21Buffer = ByteArray(previewWidth * previewHeight * 3 / 2)
+    // Store actual camera resolution (may differ from requested)
+    private var actualWidth = previewWidth
+    private var actualHeight = previewHeight
+    private lateinit var nv21Buffer: ByteArray
 
     init {
         startBackgroundThread()
     }
 
-    /**
-     * Start dedicated background thread for camera operations.
-     */
     private fun startBackgroundThread() {
         cameraThread = HandlerThread("CameraThread").apply { start() }
         cameraHandler = Handler(cameraThread!!.looper)
     }
 
-    /**
-     * Stop background thread.
-     */
     private fun stopBackgroundThread() {
         cameraThread?.quitSafely()
         try {
@@ -71,20 +51,20 @@ class CameraController(
         }
     }
 
-    /**
-     * Open camera and start preview session.
-     *
-     * Flow:
-     * 1. Open back-facing camera
-     * 2. Create ImageReader for YUV_420_888 frames
-     * 3. Create capture session with ImageReader surface
-     * 4. Start repeating request for continuous frames
-     */
     fun startCamera() {
+        // IMPORTANT: Stop any existing camera session first
+        stopCamera()
+
+        // Small delay to ensure cleanup completes
+        cameraHandler?.postDelayed({
+            openCamera()
+        }, 100)
+    }
+
+    private fun openCamera() {
         val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
         try {
-            // Find back-facing camera
             val cameraId = cameraManager.cameraIdList.firstOrNull { id ->
                 val characteristics = cameraManager.getCameraCharacteristics(id)
                 characteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
@@ -93,18 +73,56 @@ class CameraController(
                 return
             }
 
-            // Create ImageReader for YUV frames
-            // maxImages=2: double buffering for smooth capture
+            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+            val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val sizes = map?.getOutputSizes(ImageFormat.YUV_420_888)
+
+            Log.d(tag, "Supported camera resolutions:")
+            sizes?.forEach { size ->
+                Log.d(tag, "  ${size.width}x${size.height}")
+            }
+
+            // Find closest supported size
+            val targetSize = sizes?.minByOrNull { size ->
+                Math.abs(size.width * size.height - (previewWidth * previewHeight))
+            } ?: android.util.Size(640, 480)
+
+            // Store actual dimensions
+            actualWidth = targetSize.width
+            actualHeight = targetSize.height
+
+            // Create buffer with ACTUAL dimensions
+            nv21Buffer = ByteArray(actualWidth * actualHeight * 3 / 2)
+
+            Log.d(tag, "Using camera resolution: ${actualWidth}x${actualHeight}")
+
+            // Create ImageReader with actual resolution
             imageReader = ImageReader.newInstance(
-                previewWidth,
-                previewHeight,
+                actualWidth,
+                actualHeight,
                 ImageFormat.YUV_420_888,
                 2
             ).apply {
                 setOnImageAvailableListener(imageAvailableListener, cameraHandler)
             }
 
-            // Open camera device
+            cameraManager.openCamera(cameraId, cameraStateCallback, cameraHandler)
+
+            Log.d(tag, "Creating ImageReader with ${actualWidth}x${actualHeight}")
+
+            imageReader = ImageReader.newInstance(
+                actualWidth,
+                actualHeight,
+                ImageFormat.YUV_420_888,
+                2
+            ).apply {
+                Log.d(tag, "ImageReader created successfully")
+                Log.d(tag, "Setting onImageAvailableListener...")
+                setOnImageAvailableListener(imageAvailableListener, cameraHandler)
+                Log.d(tag, "Listener set, handler: $cameraHandler")
+            }
+
+            Log.d(tag, "Opening camera...")
             cameraManager.openCamera(cameraId, cameraStateCallback, cameraHandler)
 
         } catch (e: CameraAccessException) {
@@ -114,9 +132,6 @@ class CameraController(
         }
     }
 
-    /**
-     * Camera device state callback.
-     */
     private val cameraStateCallback = object : CameraDevice.StateCallback() {
         override fun onOpened(camera: CameraDevice) {
             Log.d(tag, "Camera opened")
@@ -137,50 +152,44 @@ class CameraController(
         }
     }
 
-    /**
-     * Create capture session and start repeating request.
-     */
     private fun createCaptureSession() {
         val camera = cameraDevice ?: return
         val reader = imageReader ?: return
 
+        Log.d(tag, "Creating capture session...")
+        Log.d(tag, "ImageReader surface: ${reader.surface}")
+        Log.d(tag, "ImageReader surface valid: ${reader.surface.isValid}")
+
         try {
-            // Create capture session with ImageReader surface
             camera.createCaptureSession(
                 listOf(reader.surface),
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
+                        Log.d(tag, "Capture session configured!")
                         captureSession = session
                         startRepeatingRequest(session, reader.surface)
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
-                        Log.e(tag, "Capture session configuration failed")
+                        Log.e(tag, "Capture session configuration FAILED!")
                     }
                 },
                 cameraHandler
             )
-        } catch (e: CameraAccessException) {
-            Log.e(tag, "Failed to create capture session", e)
+        } catch (e: Exception) {
+            Log.e(tag, "Exception creating capture session", e)
         }
     }
-
-    /**
-     * Start repeating capture request for continuous preview.
-     */
     private fun startRepeatingRequest(session: CameraCaptureSession, surface: Surface) {
         val camera = cameraDevice ?: return
 
         try {
             val requestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                 addTarget(surface)
-
-                // Set auto-focus and auto-exposure
                 set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                 set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
             }
 
-            // Start repeating request (continuous capture)
             session.setRepeatingRequest(requestBuilder.build(), null, cameraHandler)
             Log.d(tag, "Started repeating capture request")
 
@@ -189,42 +198,28 @@ class CameraController(
         }
     }
 
-    /**
-     * ImageReader callback - called when new frame is available.
-     *
-     * YUV_420_888 format handling:
-     * - 3 planes: Y (luminance), U (Cb), V (Cr)
-     * - We convert to NV21: Y plane followed by interleaved VU
-     * - This is a common format that OpenCV can process efficiently
-     *
-     * Performance note:
-     * - Reuses nv21Buffer to avoid allocations
-     * - Direct ByteBuffer access for fast copy
-     */
     private val imageAvailableListener = ImageReader.OnImageAvailableListener { reader ->
-        val image = reader.acquireLatestImage() ?: return@OnImageAvailableListener
+        Log.d(tag, "!!! IMAGE AVAILABLE CALLBACK FIRED !!!")
+
+        val image = reader.acquireLatestImage()
+        if (image == null) {
+            Log.e(tag, "acquireLatestImage returned NULL")
+            return@OnImageAvailableListener
+        }
+
+        Log.d(tag, "Got image: ${image.width}x${image.height}, format: ${image.format}")
 
         try {
-            // Convert YUV_420_888 to NV21
             yuv420ToNV21(image, nv21Buffer)
-
-            // Pass to native code (this is called on camera thread)
-            onFrameAvailable(nv21Buffer, previewWidth, previewHeight)
-
+            Log.d(tag, "YUV conversion complete, calling onFrameAvailable")
+            onFrameAvailable(nv21Buffer, actualWidth, actualHeight)
+            Log.d(tag, "onFrameAvailable called successfully")
+        } catch (e: Exception) {
+            Log.e(tag, "Exception in imageAvailableListener", e)
         } finally {
             image.close()
         }
     }
-
-    /**
-     * Convert YUV_420_888 Image to NV21 byte array.
-     *
-     * NV21 layout:
-     * - Y plane: width * height bytes
-     * - VU plane: width * height / 2 bytes (interleaved V and U)
-     *
-     * YUV_420_888 can have padding/stride, so we must copy row by row.
-     */
     private fun yuv420ToNV21(image: android.media.Image, out: ByteArray) {
         val planes = image.planes
         val yPlane = planes[0]
@@ -235,45 +230,36 @@ class CameraController(
         val uBuffer = uPlane.buffer
         val vBuffer = vPlane.buffer
 
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
-
         var pos = 0
 
-        // Copy Y plane (luminance)
+        // Copy Y plane
         if (yPlane.pixelStride == 1) {
-            // No padding, direct copy
+            val ySize = yBuffer.remaining()
             yBuffer.get(out, 0, ySize)
             pos = ySize
         } else {
-            // Has stride, copy row by row
             val yRowStride = yPlane.rowStride
             val yPixelStride = yPlane.pixelStride
-            for (row in 0 until previewHeight) {
-                for (col in 0 until previewWidth) {
+            for (row in 0 until actualHeight) {
+                for (col in 0 until actualWidth) {
                     out[pos++] = yBuffer.get(row * yRowStride + col * yPixelStride)
                 }
             }
         }
 
-        // Copy UV planes (chrominance) - interleave V and U for NV21
-        // NV21 format: YYYYYYY... VUVUVU...
+        // Copy UV planes
         val uvRowStride = uPlane.rowStride
         val uvPixelStride = uPlane.pixelStride
 
-        for (row in 0 until previewHeight / 2) {
-            for (col in 0 until previewWidth / 2) {
+        for (row in 0 until actualHeight / 2) {
+            for (col in 0 until actualWidth / 2) {
                 val uvIndex = row * uvRowStride + col * uvPixelStride
-                out[pos++] = vBuffer.get(uvIndex)  // V first (NV21)
-                out[pos++] = uBuffer.get(uvIndex)  // U second
+                out[pos++] = vBuffer.get(uvIndex)
+                out[pos++] = uBuffer.get(uvIndex)
             }
         }
     }
 
-    /**
-     * Stop camera preview.
-     */
     fun stopCamera() {
         try {
             captureSession?.stopRepeating()
@@ -284,18 +270,12 @@ class CameraController(
         }
     }
 
-    /**
-     * Release all resources.
-     */
     fun release() {
         stopCamera()
-
         cameraDevice?.close()
         cameraDevice = null
-
         imageReader?.close()
         imageReader = null
-
         stopBackgroundThread()
     }
 }

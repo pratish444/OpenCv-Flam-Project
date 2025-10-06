@@ -1,20 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.opencvcamera">
+    package="com.example.opencvflam">
 
     <!-- Camera permission (required for Camera2 API) -->
     <uses-permission android:name="android.permission.CAMERA" />
 
-    <!-- Declare camera hardware requirement -->
-    <!-- Set required="false" if app should work on devices without camera -->
-    <uses-feature
-        android:name="android.hardware.camera"
-        android:required="true" />
-
-    <!-- Optional: specify camera.any for front or back camera -->
-    <uses-feature
-        android:name="android.hardware.camera.any"
-        android:required="true" />
+    <!-- Optional: Declare camera hardware requirement -->
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="true" />
 
     <application
         android:allowBackup="true"
@@ -34,6 +27,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
     </application>
 
 </manifest>
